@@ -154,14 +154,18 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <Box sx={{ p: 4, bgcolor: "#f4f6f8", minHeight: "100vh" }}>
+  // make content flush with the permanent drawer: no left padding on md+
+  <Box sx={{ pt: 4, pr: 4, pb: 4, pl: { md: 0, xs: 2 }, bgcolor: "#f4f6f8", minHeight: "100vh" }}>
       {/* Header */}
       <Grid container justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" fontWeight="bold" color="primary">
-          Admin Dashboard
-        </Typography>
+        <Box>
+          <Typography variant="h4" fontWeight={700} color="primary" sx={{ letterSpacing: 0.5 }}>
+            Admin Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary">Overview of tasks, activity and quick actions</Typography>
+        </Box>
         <Button
-          variant="contained"
+          variant="outlined"
           color="error"
           startIcon={<LogoutIcon />}
           onClick={handleLogout}
@@ -171,7 +175,7 @@ export default function AdminDashboard() {
       </Grid>
 
       {/* Analytics Centered */}
-      <Box
+      <Box id="analytics"
         sx={{
           mb: 5,
           display: "flex",
@@ -181,9 +185,9 @@ export default function AdminDashboard() {
           flexWrap: "wrap",
         }}
       >
-        <Card sx={{ p: 2, width: 300 }}>
+        <Card sx={{ p: 2, width: 340, borderRadius: 3, boxShadow: 3 }}>
           <CardContent>
-            <Typography align="center" fontWeight="bold">
+            <Typography align="center" fontWeight={700} sx={{ mb: 1 }}>
               Task Analytics
             </Typography>
             <ResponsiveContainer width="100%" height={220}>
@@ -206,19 +210,19 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card sx={{ p: 2, width: 250, textAlign: "center" }}>
+        <Card sx={{ p: 2, width: 260, textAlign: "center", borderRadius: 3, boxShadow: 3 }}>
           <Typography variant="h6">Total Tasks</Typography>
-          <Typography variant="h4" color="primary">
+          <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
             {total}
           </Typography>
           <Divider sx={{ my: 1 }} />
-          <Typography color="green">Completed: {completed}</Typography>
-          <Typography color="orange">Pending: {pending}</Typography>
+          <Typography color="green" sx={{ fontWeight: 600 }}>Completed: {completed}</Typography>
+          <Typography color="orange" sx={{ fontWeight: 600 }}>Pending: {pending}</Typography>
         </Card>
       </Box>
 
       {/* Add Task */}
-      <Card sx={{ mb: 4 }}>
+  <Card id="add-task" sx={{ mb: 4, borderRadius: 3, boxShadow: 2 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Assign New Task
@@ -289,92 +293,95 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Tasks 4 per row */}
-      <Grid container spacing={3}>
-        {tasks.length === 0 ? (
-          <Typography color="text.secondary" sx={{ ml: 2 }}>
-            No tasks available.
-          </Typography>
-        ) : (
-          tasks.map((t) => (
-            <Grid item xs={12} sm={6} md={3} key={t.id}>
-              <Card sx={{ p: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                <Typography variant="h6">{t.title}</Typography>
-                <Chip
-                  label={t.priority}
-                  color={
-                    t.priority === "High"
-                      ? "error"
-                      : t.priority === "Medium"
-                      ? "warning"
-                      : "success"
-                  }
-                  size="small"
-                />
-                <Typography variant="body2" color="text.secondary">
-                  Assigned to: {t.assignedTo}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Due: {t.dueDate}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: t.status === "Completed" || t.status === "Done" ? "green" : "orange",
-                    fontWeight: 600,
-                  }}
-                >
-                  Status: {t.status}
-                </Typography>
-                <Divider sx={{ my: 1 }} />
-
-                <Typography variant="subtitle2">Comments:</Typography>
-                {t.comments?.length ? (
-                  t.comments.map((c, i) => (
-                    <Box key={i} sx={{ mb: 0.5 }}>
-                      <Typography variant="body2">💬 {c.text}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {c.author} • {c.date}
-                      </Typography>
-                    </Box>
-                  ))
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No comments yet.
-                  </Typography>
-                )}
-
-                <Box sx={{ mt: 1, display: "flex", gap: 1 }}>
-                  <TextField
-                    size="small"
-                    placeholder="Add comment..."
-                    value={newComment[t.id] || ""}
-                    onChange={(e) =>
-                      setNewComment({ ...newComment, [t.id]: e.target.value })
+  {/* Tasks 4 per row wrapped in internal scroll container to avoid page scroll */}
+  <Box id="tasks" sx={{ maxHeight: { xs: '60vh', md: '60vh' }, overflowY: 'auto', pr: 1 }}>
+        <Grid container spacing={3}>
+          {tasks.length === 0 ? (
+            <Typography color="text.secondary" sx={{ ml: 2 }}>
+              No tasks available.
+            </Typography>
+          ) : (
+            tasks.map((t) => (
+              <Grid item xs={12} sm={6} md={3} key={t.id}>
+                <Card sx={{ p: 2, display: "flex", flexDirection: "column", gap: 1, height: '100%', borderRadius: 2, boxShadow: 2, transition: 'transform .15s', '&:hover': { transform: 'translateY(-4px)' } }}>
+                  <Typography variant="h6" sx={{ textTransform: 'capitalize' }}>{t.title}</Typography>
+                  <Chip
+                    label={t.priority}
+                    sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 1.2, fontWeight: 600 }}
+                    color={
+                      t.priority === "High"
+                        ? "error"
+                        : t.priority === "Medium"
+                        ? "warning"
+                        : "success"
                     }
-                  />
-                  <Button
                     size="small"
-                    variant="contained"
-                    onClick={() => handleAddComment(t.id)}
+                  />
+                  <Typography variant="body2" color="text.secondary">
+                    Assigned to: {t.assignedTo}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Due: {t.dueDate}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: t.status === "Completed" || t.status === "Done" ? "green" : "orange",
+                      fontWeight: 600,
+                    }}
                   >
-                    Post
-                  </Button>
-                </Box>
+                    Status: {t.status}
+                  </Typography>
+                  <Divider sx={{ my: 1 }} />
 
-                <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
-                  <IconButton color="error" onClick={() => handleDeleteTask(t.id)}>
-                    <DeleteIcon />
-                  </IconButton>
-                </Box>
-              </Card>
-            </Grid>
-          ))
-        )}
-      </Grid>
+                  <Typography variant="subtitle2">Comments:</Typography>
+                  {t.comments?.length ? (
+                    t.comments.map((c, i) => (
+                      <Box key={i} sx={{ mb: 0.5 }}>
+                        <Typography variant="body2">💬 {c.text}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {c.author} • {c.date}
+                        </Typography>
+                      </Box>
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No comments yet.
+                    </Typography>
+                  )}
+
+                  <Box sx={{ mt: 1, display: "flex", gap: 1 }}>
+                    <TextField
+                      size="small"
+                      placeholder="Add comment..."
+                      value={newComment[t.id] || ""}
+                      onChange={(e) =>
+                        setNewComment({ ...newComment, [t.id]: e.target.value })
+                      }
+                    />
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => handleAddComment(t.id)}
+                    >
+                      Post
+                    </Button>
+                  </Box>
+
+                  <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
+                    <IconButton color="error" onClick={() => handleDeleteTask(t.id)}>
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                </Card>
+              </Grid>
+            ))
+          )}
+        </Grid>
+      </Box>
 
       {/* Activity Log */}
-      <Card sx={{ mt: 5 }}>
+      <Card id="activity" sx={{ mt: 5 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Activity Log

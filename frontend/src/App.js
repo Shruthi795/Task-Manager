@@ -1,10 +1,12 @@
 // src/App.js
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import Box from "@mui/material/Box";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import Navbar from "./components/Navbar";
 
 /**
  * ProtectedRoute: returns children if logged-in and role allowed,
@@ -24,7 +26,11 @@ export default function App() {
 
   return (
     <Router>
-      <Routes>
+      <Box sx={{ display: 'flex' }}>
+        {/* Only show the admin sidebar/drawer when an admin is logged in */}
+        {currentUser && currentUser.role === 'admin' && <Navbar />}
+        <Box component="main" sx={{ flexGrow: 1, p: 0, pl: 0 }}>
+          <Routes>
         <Route
           path="/"
           element={
@@ -58,7 +64,9 @@ export default function App() {
         />
 
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          </Routes>
+        </Box>
+      </Box>
     </Router>
   );
 }
