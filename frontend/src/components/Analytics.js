@@ -21,13 +21,16 @@ export default function Analytics() {
   // Tasks per user (assigned)
   const userTaskData = users.map((u) => ({
     name: u.name,
-    count: tasks.filter((t) => t.assignedTo === u.email).length,
+    count: tasks.filter((t) => {
+      if (!t.assignedTo) return false;
+      return Array.isArray(t.assignedTo) ? t.assignedTo.includes(u.email) : t.assignedTo === u.email;
+    }).length,
   }));
 
   // Assigned vs Unassigned
   const statusData = [
-    { name: "Assigned", value: tasks.filter((t) => t.assignedTo).length },
-    { name: "Unassigned", value: tasks.filter((t) => !t.assignedTo).length },
+  { name: "Assigned", value: tasks.filter((t) => t.assignedTo && (Array.isArray(t.assignedTo) ? t.assignedTo.length > 0 : true)).length },
+  { name: "Unassigned", value: tasks.filter((t) => !t.assignedTo || (Array.isArray(t.assignedTo) && t.assignedTo.length === 0)).length },
   ];
 
   return (

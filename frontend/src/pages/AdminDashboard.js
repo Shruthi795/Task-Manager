@@ -11,9 +11,14 @@ import {
   Divider,
   Chip,
   IconButton,
+  Menu,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import DeleteIcon from "@mui/icons-material/Delete";
+import CloseIcon from "@mui/icons-material/Close";
 import LogoutIcon from "@mui/icons-material/Logout";
+import ActivityLog from "../components/ActivityLog";
 import {
   PieChart,
   Pie,
@@ -22,39 +27,62 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   blue,
   green,
   orange,
   deepPurple,
-  indigo,
 } from "@mui/material/colors";
 
 const COLORS = [blue[400], green[400], orange[400], deepPurple[400]];
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isSmall = useMediaQuery(theme.breakpoints.down("sm"));
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem("user"));
+
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "admin") {
+      navigate("/login", { replace: true });
+      return;
+    }
+  }, [navigate, currentUser]);
+
   const [newTask, setNewTask] = useState({
     title: "",
-    assignedTo: "",
+    description: "",
+    assignedTo: [],
     dueDate: "",
     priority: "Medium",
+    teamId: null,
     status: "To Do",
   });
+  const [addMode, setAddMode] = useState(null);
   const [newComment, setNewComment] = useState({});
+  const location = useLocation();
+  const [tab, setTab] = useState("tasks");
 
-  // Load all data initially + when updated
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const t = params.get("tab");
+    if (t) setTab(t);
+  }, [location.search]);
+
   const loadData = () => {
     const storedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
     const storedUsers = JSON.parse(localStorage.getItem("users")) || [];
     const storedActivity = JSON.parse(localStorage.getItem("activity")) || [];
+    const storedTeams = JSON.parse(localStorage.getItem("teams")) || [];
     setTasks(storedTasks);
     setUsers(storedUsers);
     setActivityLog(storedActivity);
+    setTeams(storedTeams);
   };
 
   useEffect(() => {
@@ -68,33 +96,91 @@ export default function AdminDashboard() {
     };
   }, []);
 
+  const [assigneeMenuAnchor, setAssigneeMenuAnchor] = useState(null);
+  const [assigneeMenuTaskId, setAssigneeMenuTaskId] = useState(null);
+
+  const handleOpenAssigneeMenu = (e, taskId) => {
+    setAssigneeMenuAnchor(e.currentTarget);
+    setAssigneeMenuTaskId(taskId);
+  };
+
+  const handleCloseAssigneeMenu = () => {
+    setAssigneeMenuAnchor(null);
+    setAssigneeMenuTaskId(null);
+  };
+
+  const today = new Date().toISOString().split("T")[0];
+
   const handleLogout = () => {
-    // Login/Signup use the key 'user' so remove that on logout
     localStorage.removeItem("user");
     localStorage.removeItem("isAdmin");
+    setNewTask({
+      title: "",
+      assignedTo: [],
+      dueDate: "",
+      priority: "Medium",
+      status: "To Do",
+    });
+    setNewComment({});
+    setAssigneeMenuAnchor(null);
+    setAssigneeMenuTaskId(null);
     navigate("/login", { replace: true });
+    window.dispatchEvent(new Event("custom_local_update"));
   };
 
   const handleAddTask = () => {
-    if (!newTask.title || !newTask.assignedTo || !newTask.dueDate) return;
+    if (!newTask.title || !newTask.dueDate) return;
+    if (addMode === "group" && !newTask.teamId) return;
+
+    let assignees = [];
+    if (addMode === "group") {
+      const team = teams.find((t) => t.id === newTask.teamId);
+      if (team) {
+        assignees = users
+          .filter((u) => team.members?.includes(u.id))
+          .map((u) => u.email);
+      }
+      if (assignees.length === 0) return;
+    } else {
+      assignees = Array.isArray(newTask.assignedTo)
+        ? newTask.assignedTo
+        : newTask.assignedTo
+        ? [newTask.assignedTo]
+        : [];
+      if (assignees.length === 0) return;
+    }
+
     const newTaskObj = {
       ...newTask,
       id: Date.now(),
-      // default to the chosen status or To Do to match user dashboard
+      assignedTo: assignees,
+      description: newTask.description || "",
       status: newTask.status || "To Do",
       comments: [],
+      teamId: addMode === "group" ? newTask.teamId : null,
     };
     const updated = [...tasks, newTaskObj];
     const logEntry = {
       id: Date.now(),
-      message: `Task "${newTask.title}" assigned to ${newTask.assignedTo}`,
+      message:
+        addMode === "group"
+          ? `Task "${newTask.title}" assigned to group (${assignees.join(", ")})`
+          : `Task "${newTask.title}" assigned to ${assignees.join(", ")}`,
       date: new Date().toLocaleString(),
     };
     localStorage.setItem("tasks", JSON.stringify(updated));
     localStorage.setItem("activity", JSON.stringify([...activityLog, logEntry]));
     setTasks(updated);
     setActivityLog((prev) => [...prev, logEntry]);
-  setNewTask({ title: "", assignedTo: "", dueDate: "", priority: "Medium", status: "To Do" });
+    setNewTask({
+      title: "",
+      description: "",
+      assignedTo: [],
+      dueDate: "",
+      priority: "Medium",
+      status: "To Do",
+      teamId: null,
+    });
     window.dispatchEvent(new Event("custom_local_update"));
   };
 
@@ -142,275 +228,443 @@ export default function AdminDashboard() {
     window.dispatchEvent(new Event("custom_local_update"));
   };
 
-  // Analytics
   const total = tasks.length;
-  // Treat both "Done" (user dashboard) and "Completed" (admin) as completed
-  const completed = tasks.filter((t) => t.status === "Completed" || t.status === "Done").length;
-  // Pending = not completed
+  const completed = tasks.filter(
+    (t) => t.status === "Completed" || t.status === "Done"
+  ).length;
   const pending = total - completed;
   const pieData = [
     { name: "Completed", value: completed },
     { name: "Pending", value: pending },
   ];
 
+  const handleTabChange = (e, newValue) => {
+    setTab(newValue);
+    navigate(`${location.pathname}?tab=${newValue}`, { replace: true });
+  };
+
   return (
-  // make content flush with the permanent drawer: no left padding on md+
-  <Box sx={{ pt: 4, pr: 4, pb: 4, pl: { md: 0, xs: 2 }, bgcolor: "#f4f6f8", minHeight: "100vh" }}>
+    <Box sx={{ pt: 4, pr: 4, pb: 4, pl: { md: 0, xs: 2 }, bgcolor: "#f4f6f8", minHeight: "100vh" }}>
       {/* Header */}
       <Grid container justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
           <Typography variant="h4" fontWeight={700} color="primary" sx={{ letterSpacing: 0.5 }}>
             Admin Dashboard
           </Typography>
-          <Typography variant="body2" color="text.secondary">Overview of tasks, activity and quick actions</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Overview of tasks, activity and quick actions
+          </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          color="error"
-          startIcon={<LogoutIcon />}
-          onClick={handleLogout}
-        >
-          Logout
-        </Button>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+          >
+            Logout
+          </Button>
+        </Box>
       </Grid>
 
-      {/* Analytics Centered */}
-      <Box id="analytics"
-        sx={{
-          mb: 5,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: 4,
-          flexWrap: "wrap",
-        }}
-      >
-        <Card sx={{ p: 2, width: 340, borderRadius: 3, boxShadow: 3 }}>
-          <CardContent>
-            <Typography align="center" fontWeight={700} sx={{ mb: 1 }}>
-              Task Analytics
-            </Typography>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  outerRadius={90}
-                  label
-                >
-                  {pieData.map((entry, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {/* Tabs */}
+      {tab === "analytics" && (
+        <Box
+          id="analytics"
+          sx={{
+            mb: 5,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 4,
+            flexWrap: "wrap",
+          }}
+        >
+          <Card sx={{ p: 2, width: 340, borderRadius: 3, boxShadow: 3 }}>
+            <CardContent>
+              <Typography align="center" fontWeight={700} sx={{ mb: 1 }}>
+                Task Analytics
+              </Typography>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={90} label>
+                    {pieData.map((entry, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-        <Card sx={{ p: 2, width: 260, textAlign: "center", borderRadius: 3, boxShadow: 3 }}>
-          <Typography variant="h6">Total Tasks</Typography>
-          <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
-            {total}
-          </Typography>
-          <Divider sx={{ my: 1 }} />
-          <Typography color="green" sx={{ fontWeight: 600 }}>Completed: {completed}</Typography>
-          <Typography color="orange" sx={{ fontWeight: 600 }}>Pending: {pending}</Typography>
-        </Card>
-      </Box>
+          <Card sx={{ p: 2, width: 260, textAlign: "center", borderRadius: 3, boxShadow: 3 }}>
+            <Typography variant="h6">Total Tasks</Typography>
+            <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
+              {total}
+            </Typography>
+            <Divider sx={{ my: 1 }} />
+            <Typography color="green" sx={{ fontWeight: 600 }}>
+              Completed: {completed}
+            </Typography>
+            <Typography color="orange" sx={{ fontWeight: 600 }}>
+              Pending: {pending}
+            </Typography>
+          </Card>
+        </Box>
+      )}
 
       {/* Add Task */}
-  <Card id="add-task" sx={{ mb: 4, borderRadius: 3, boxShadow: 2 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Assign New Task
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={3}>
-              <TextField
-                label="Title"
-                fullWidth
-                value={newTask.title}
-                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <TextField
-                select
-                label="Assign To"
-                fullWidth
-                value={newTask.assignedTo}
-                onChange={(e) =>
-                  setNewTask({ ...newTask, assignedTo: e.target.value })
-                }
-              >
-                {users.map((u) => (
-                  <MenuItem key={u.email} value={u.email}>
-                    {u.email}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <TextField
-                type="date"
-                label="Due Date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={newTask.dueDate}
-                onChange={(e) =>
-                  setNewTask({ ...newTask, dueDate: e.target.value })
-                }
-              />
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <TextField
-                select
-                label="Priority"
-                fullWidth
-                value={newTask.priority}
-                onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-              >
-                <MenuItem value="Low">Low</MenuItem>
-                <MenuItem value="Medium">Medium</MenuItem>
-                <MenuItem value="High">High</MenuItem>
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <Button
-                fullWidth
-                variant="contained"
-                color="primary"
-                onClick={handleAddTask}
-                sx={{ height: "100%" }}
-              >
-                Add
-              </Button>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-  {/* Tasks 4 per row wrapped in internal scroll container to avoid page scroll */}
-  <Box id="tasks" sx={{ maxHeight: { xs: '60vh', md: '60vh' }, overflowY: 'auto', pr: 1 }}>
-        <Grid container spacing={3}>
-          {tasks.length === 0 ? (
-            <Typography color="text.secondary" sx={{ ml: 2 }}>
-              No tasks available.
+      {tab === "add-task" && (
+        <Card id="add-task" sx={{ mb: 4, borderRadius: 3, boxShadow: 2 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Assign New Task
             </Typography>
-          ) : (
-            tasks.map((t) => (
-              <Grid item xs={12} sm={6} md={3} key={t.id}>
-                <Card sx={{ p: 2, display: "flex", flexDirection: "column", gap: 1, height: '100%', borderRadius: 2, boxShadow: 2, transition: 'transform .15s', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <Typography variant="h6" sx={{ textTransform: 'capitalize' }}>{t.title}</Typography>
-                  <Chip
-                    label={t.priority}
-                    sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 1.2, fontWeight: 600 }}
-                    color={
-                      t.priority === "High"
-                        ? "error"
-                        : t.priority === "Medium"
-                        ? "warning"
-                        : "success"
-                    }
-                    size="small"
-                  />
-                  <Typography variant="body2" color="text.secondary">
-                    Assigned to: {t.assignedTo}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Due: {t.dueDate}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: t.status === "Completed" || t.status === "Done" ? "green" : "orange",
-                      fontWeight: 600,
+            <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+              <Button
+                variant={!addMode ? "contained" : "outlined"}
+                onClick={() => {
+                  setAddMode(null);
+                  setNewTask((prev) => ({ ...prev, teamId: null }));
+                }}
+              >
+                Individual
+              </Button>
+              <Button
+                variant={addMode === "group" ? "contained" : "outlined"}
+                onClick={() => {
+                  setAddMode("group");
+                  setNewTask((prev) => ({ ...prev, assignedTo: [] }));
+                }}
+              >
+                Team
+              </Button>
+            </Box>
+
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={3}>
+                <TextField
+                  label="Title"
+                  fullWidth
+                  value={newTask.title}
+                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField
+                  label="Description"
+                  fullWidth
+                  value={newTask.description}
+                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                />
+              </Grid>
+
+              {!addMode && (
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    select
+                    label="Assign To"
+                    fullWidth
+                    value={newTask.assignedTo}
+                    SelectProps={{
+                      multiple: true,
+                      renderValue: (selected) =>
+                        Array.isArray(selected) ? selected.join(", ") : selected,
+                    }}
+                    onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
+                  >
+                    {users.map((u) => (
+                      <MenuItem key={u.email} value={u.email}>
+                        {u.email}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              )}
+
+              {addMode === "group" && (
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    select
+                    label="Select Team"
+                    fullWidth
+                    value={newTask.teamId || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const team = teams.find((t) => t.id.toString() === val);
+                      if (team) {
+                        const memberEmails = users
+                          .filter((u) => team.members?.includes(u.id))
+                          .map((u) => u.email);
+                        setNewTask({ ...newTask, teamId: team.id, assignedTo: memberEmails });
+                      }
                     }}
                   >
-                    Status: {t.status}
-                  </Typography>
-                  <Divider sx={{ my: 1 }} />
+                    <MenuItem value="" disabled>
+                      Select a team
+                    </MenuItem>
+                    {teams.map((t) => (
+                      <MenuItem key={t.id} value={t.id.toString()}>
+                        {t.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              )}
 
-                  <Typography variant="subtitle2">Comments:</Typography>
-                  {t.comments?.length ? (
-                    t.comments.map((c, i) => (
-                      <Box key={i} sx={{ mb: 0.5 }}>
-                        <Typography variant="body2">💬 {c.text}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {c.author} • {c.date}
-                        </Typography>
-                      </Box>
-                    ))
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No comments yet.
-                    </Typography>
-                  )}
-
-                  <Box sx={{ mt: 1, display: "flex", gap: 1 }}>
-                    <TextField
-                      size="small"
-                      placeholder="Add comment..."
-                      value={newComment[t.id] || ""}
-                      onChange={(e) =>
-                        setNewComment({ ...newComment, [t.id]: e.target.value })
-                      }
-                    />
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={() => handleAddComment(t.id)}
-                    >
-                      Post
-                    </Button>
-                  </Box>
-
-                  <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
-                    <IconButton color="error" onClick={() => handleDeleteTask(t.id)}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </Box>
-                </Card>
+              <Grid item xs={12} sm={3}>
+                <TextField
+                  type="date"
+                  label="Due Date"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ min: today }}
+                  value={newTask.dueDate}
+                  onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
+                />
               </Grid>
-            ))
-          )}
-        </Grid>
-      </Box>
 
-      {/* Activity Log */}
-      <Card id="activity" sx={{ mt: 5 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Activity Log
-          </Typography>
-          {activityLog.length === 0 ? (
-            <Typography color="text.secondary">No recent activity</Typography>
-          ) : (
-            activityLog
-              .slice()
-              .reverse()
-              .map((a) => (
-                <Box
-                  key={a.id}
-                  sx={{
-                    p: 1,
-                    mb: 1,
-                    bgcolor: "#f8f9fb",
-                    borderRadius: 1,
-                  }}
+              <Grid item xs={12} sm={2}>
+                <TextField
+                  select
+                  label="Priority"
+                  fullWidth
+                  value={newTask.priority}
+                  onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
                 >
-                  <Typography variant="body2">{a.message}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {a.date}
-                  </Typography>
-                </Box>
+                  <MenuItem value="Low">Low</MenuItem>
+                  <MenuItem value="Medium">Medium</MenuItem>
+                  <MenuItem value="High">High</MenuItem>
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12} sm={2}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="primary"
+                  onClick={handleAddTask}
+                  sx={{ height: "100%" }}
+                >
+                  Add
+                </Button>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
+
+{/* Tasks Tab */}
+      {tab === "activity" ? (
+        <Box sx={{ maxWidth: "1200px", mx: "auto", width: "100%", p: 1 }}>
+          <ActivityLog />
+        </Box>
+      ) : tab === "tasks" && (
+        <Box id="tasks" sx={{ maxWidth: "1200px", mx: "auto", width: "100%", p: 1 }}>
+          <Grid container alignItems="stretch" sx={{ 
+            display: 'grid', 
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
+            gap: 2,
+            justifyItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {tasks.length === 0 ? (
+              <Grid item xs={12}>
+                <Typography color="text.secondary" sx={{ ml: 2 }}>
+                  No tasks available.
+                </Typography>
+              </Grid>
+            ) : (
+              tasks.map((t) => (
+                <Grid item key={t.id} sx={{ display: "flex", width: '100%', justifyContent: 'center' }}>
+                  <Card
+                    sx={{
+                      p: 2,
+                      display: "flex",
+                      flexDirection: "column",
+                      width: '360px',
+                      minWidth: 'auto',
+                      maxWidth: '360px',
+                      height: 400,
+                      borderRadius: 3,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                      backgroundColor: "#ffffff",
+                      transition: "transform .3s, box-shadow .3s",
+                      "&:hover": { 
+                        transform: "translateY(-8px)",
+                        boxShadow: "0 12px 32px rgba(0,0,0,0.2)"
+                      },
+                    }}
+                  >
+                    <Box sx={{ mb: 2 }}>
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          textTransform: "capitalize",
+                          mb: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: "100%",
+                        }}
+                      >
+                        {t.title}
+                      </Typography>
+                      <Chip
+                        label={t.priority}
+                        sx={{ borderRadius: 2, px: 1.2, fontWeight: 600 }}
+                        color={
+                          t.priority === "High"
+                            ? "error"
+                            : t.priority === "Medium"
+                            ? "warning"
+                            : "success"
+                        }
+                        size="small"
+                      />
+                    </Box>
+
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        Description:
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          mb: 1,
+                        }}
+                      >
+                        {t.description || "No description provided"}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ mt: "auto" }}>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        Assigned to:
+                      </Typography>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.5,
+                          maxHeight: 80,
+                          overflowY: "auto",
+                          '&::-webkit-scrollbar': {
+                            width: '8px',
+                          },
+                          '&::-webkit-scrollbar-track': {
+                            backgroundColor: '#f1f1f1',
+                            borderRadius: '4px',
+                          },
+                          '&::-webkit-scrollbar-thumb': {
+                            backgroundColor: '#888',
+                            borderRadius: '4px',
+                            '&:hover': {
+                              backgroundColor: '#666',
+                            },
+                          },
+                        }}
+                      >
+                        {(() => {
+                          const arr = Array.isArray(t.assignedTo)
+                            ? t.assignedTo
+                            : t.assignedTo
+                            ? [t.assignedTo]
+                            : [];
+                          if (arr.length === 0)
+                            return (
+                              <Typography variant="body2" color="text.secondary">
+                                Unassigned
+                              </Typography>
+                            );
+                          const visible = arr.slice(0, 2);
+                          const extra = arr.length - visible.length;
+                          return (
+                            <>
+                              {visible.map((a) => (
+                                <Chip
+                                  key={a}
+                                  label={a}
+                                  size="small"
+                                  variant="outlined"
+                                  onDelete={() => {
+                                    const updated = tasks.map((task) =>
+                                      task.id === t.id
+                                        ? {
+                                            ...task,
+                                            assignedTo: arr.filter((x) => x !== a),
+                                          }
+                                        : task
+                                    );
+                                    localStorage.setItem("tasks", JSON.stringify(updated));
+                                    setTasks(updated);
+                                    window.dispatchEvent(new Event("custom_local_update"));
+                                  }}
+                                  deleteIcon={<CloseIcon fontSize="small" />}
+                                />
+                              ))}
+                              {extra > 0 && (
+                                <Chip
+                                  label={`+${extra} more`}
+                                  size="small"
+                                  onClick={(e) => handleOpenAssigneeMenu(e, t.id)}
+                                />
+                              )}
+                            </>
+                          );
+                        })()}
+                      </Box>
+                      <Menu
+                        anchorEl={assigneeMenuAnchor}
+                        open={assigneeMenuTaskId === t.id}
+                        onClose={handleCloseAssigneeMenu}
+                      >
+                        {Array.isArray(t.assignedTo) &&
+                          t.assignedTo.slice(2).map((a) => (
+                            <MenuItem key={a}>{a}</MenuItem>
+                          ))}
+                      </Menu>
+                    </Box>
+
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mt: 1 }}
+                    >
+                      Due: {t.dueDate}
+                    </Typography>
+
+                    <Box
+                      sx={{
+                        mt: 2,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Button
+                        color="error"
+                        onClick={() => handleDeleteTask(t.id)}
+                        size="small"
+                        startIcon={<DeleteIcon />}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  </Card>
+                </Grid>
               ))
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </Grid>
+        </Box>
+      )}
     </Box>
   );
 }

@@ -29,7 +29,13 @@ export default function Navbar() {
   };
 
   const navigateAndScroll = (route, id) => {
-    // navigate first, then attempt to scroll to element by id after a short delay
+    // For admin route, prefer switching tabs via query param instead of scrolling
+    if (route === "/admin" && id) {
+      // use query param 'tab' to let AdminDashboard open the correct panel
+      navigate(`${route}?tab=${id}`);
+      return;
+    }
+    // otherwise navigate first, then attempt to scroll to element by id after a short delay
     if (route) navigate(route);
     setTimeout(() => {
       if (!id) return;
@@ -51,21 +57,7 @@ export default function Navbar() {
       <List>
         {currentUser && (
           <>
-            <ListItem disablePadding>
-              <ListItemButton onClick={() => navigateAndScroll(currentUser.role === 'admin' ? '/admin' : '/dashboard')}>
-                <ListItemText primary="Home" />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton onClick={() => navigateAndScroll(currentUser.role === 'admin' ? '/admin' : '/dashboard', 'tasks')}>
-                <ListItemText primary="Tasks" />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton onClick={() => navigateAndScroll(currentUser.role === 'admin' ? '/admin' : '/dashboard', 'activity')}>
-                <ListItemText primary="Activity" />
-              </ListItemButton>
-            </ListItem>
+            {/* Admin: Add Task as the first action (primary flow) */}
             {currentUser.role === 'admin' && (
               <ListItem disablePadding>
                 <ListItemButton onClick={() => navigateAndScroll('/admin', 'add-task')}>
@@ -73,7 +65,54 @@ export default function Navbar() {
                 </ListItemButton>
               </ListItem>
             )}
-            <Divider />
+
+            {/* Tasks and Activity for both roles */}
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => {
+                // Admins should open the Admin dashboard tasks tab; regular users go to the user dashboard
+                if (currentUser?.role === 'admin') {
+                  navigateAndScroll('/admin', 'tasks');
+                } else {
+                  navigate('/dashboard#my');
+                }
+              }}>
+                <ListItemText primary="My Tasks" />
+              </ListItemButton>
+            </ListItem>
+            {currentUser.role === 'user' && (
+              <ListItem disablePadding>
+                <ListItemButton onClick={() => navigate('/dashboard#team')}>
+                  <ListItemText primary="Team Tasks" />
+                </ListItemButton>
+              </ListItem>
+            )}
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => {
+                if (currentUser.role === 'admin') {
+                  navigateAndScroll('/admin', 'activity');
+                } else {
+                  navigate('/dashboard#activity');
+                }
+              }}>
+                <ListItemText primary="Activity" />
+              </ListItemButton>
+            </ListItem>
+
+                {/* Admin-only analytics and teams */}
+            {currentUser.role === 'admin' && (
+              <>
+                <ListItem disablePadding>
+                  <ListItemButton onClick={() => navigateAndScroll('/admin', 'analytics')}>
+                    <ListItemText primary="Analytics" />
+                  </ListItemButton>
+                </ListItem>
+                <ListItem disablePadding>
+                  <ListItemButton onClick={() => navigate('/teams')}>
+                    <ListItemText primary="Teams" />
+                  </ListItemButton>
+                </ListItem>
+              </>
+            )}            <Divider />
             <ListItem disablePadding>
               <ListItemButton onClick={handleLogout}>
                 <ListItemText primary="Logout" />

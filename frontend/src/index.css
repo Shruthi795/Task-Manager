@@ -3,3 +3,79 @@ body {
   background-color: #f9f9fb;
   font-family: "Inter", "Poppins", sans-serif;
 }
+
+/* Responsive form & global helpers added to improve mobile layout */
+:root {
+  --max-form-width: 420px;
+  --surface: #ffffff;
+  --muted-border: #d1d5db;
+  --accent: #007bff;
+}
+
+/* Form containers (login / signup) — responsive and touch-friendly */
+.login-container,
+.signup-container {
+  background-color: var(--surface);
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.06);
+  width: 100%;
+  max-width: var(--max-form-width);
+  margin: 2.5rem auto;
+  box-sizing: border-box;
+}
+
+/* Inputs & selects: full-width and comfortable tap targets */
+input,
+textarea,
+select {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border-radius: 8px;
+  border: 1px solid var(--muted-border);
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+/* Buttons: full width on form flows, with a minimum tappable height */
+button {
+  display: inline-block;
+  width: 100%;
+  padding: 12px;
+  background-color: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
+  min-height: 44px; /* accessibility: recommended touch target */
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+p { margin-top: 10px; font-size: 0.95rem; }
+
+p.error { color: #dc2626; }
+p.success { color: #16a34a; }
+
+/* Make the default app header less tall on small screens */
+@media (max-width: 600px) {
+  .login-container,
+  .signup-container {
+    padding: 1rem;
+    margin: 1.25rem auto;
+    border-radius: 10px;
+  }
+
+  input, textarea, select, button {
+    padding: 14px;
+    font-size: 1.02rem;
+  }
+
+  .App-header { min-height: auto; padding-top: 1.5rem; padding-bottom: 1.5rem; }
+}

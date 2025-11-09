@@ -4,8 +4,11 @@ import CommentSection from "./CommentSection";
 import { useTaskContext } from "../context/TaskContext";
 
 export default function TaskCard({ task, isAdmin }) {
-  const { users, assignTask, addComment, currentUser } = useTaskContext();
+  const { users, assignTask, addComment, currentUser, tasks } = useTaskContext();
   const [comment, setComment] = useState("");
+
+  // Use the up-to-date task from context when available so comments show after addComment
+  const currentTask = tasks?.find((t) => t.id === task.id) || task;
 
   const handleAssign = (e) => assignTask(task.id, e.target.value);
   const handleAddComment = () => {
@@ -17,9 +20,9 @@ export default function TaskCard({ task, isAdmin }) {
   return (
     <Card sx={{ mb: 2, boxShadow: 3 }}>
       <CardContent>
-        <Typography variant="h6">{task.title}</Typography>
+        <Typography variant="h6">{currentTask.title}</Typography>
         <Typography variant="body2" color="text.secondary">
-          {task.description}
+          {currentTask.description}
         </Typography>
 
         {isAdmin && (
@@ -28,8 +31,9 @@ export default function TaskCard({ task, isAdmin }) {
             label="Assign To"
             fullWidth
             size="small"
-            value={task.assignedTo || ""}
-            onChange={handleAssign}
+            value={Array.isArray(task.assignedTo) ? task.assignedTo : (task.assignedTo ? [task.assignedTo] : [])}
+            SelectProps={{ multiple: true, renderValue: (selected) => (Array.isArray(selected) ? selected.join(', ') : selected) }}
+            onChange={(e) => assignTask(task.id, e.target.value)}
             sx={{ mt: 2 }}
           >
             <MenuItem value="">Unassigned</MenuItem>
@@ -41,7 +45,7 @@ export default function TaskCard({ task, isAdmin }) {
           </TextField>
         )}
 
-        <CommentSection comments={task.comments || []} />
+  <CommentSection comments={currentTask.comments || []} />
 
         <TextField
           label="Add comment"

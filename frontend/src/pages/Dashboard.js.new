@@ -1,0 +1,428 @@
+import React, { useEffect, useState } from "react";
+import {
+  Container, Typography, Box, Card, CardContent, Grid, Divider,
+  Chip, Button, TextField, Paper, Stack, Drawer, List,
+  ListItemIcon, ListItemText, ListItemButton, useTheme, useMediaQuery
+} from "@mui/material";
+import {
+  Comment, AssignmentTurnedIn, Logout, Assignment,
+  Group, Timeline, ViewList, Menu as MenuIcon
+} from "@mui/icons-material";
+import TaskMembers from '../components/TaskMembers';
+import ActivityLog from '../components/ActivityLog';
+import { useNavigate, useLocation } from "react-router-dom";
+
+const DRAWER_WIDTH = 240;
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const [tasks, setTasks] = useState([]);          // displayed tasks
+  const [allTasks, setAllTasks] = useState([]);    // master list
+  const [view, setView] = useState('my'); // 'my' | 'team' | 'activity'
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
+
+  // Update view based on URL hash
+  useEffect(() => {
+    const hash = location.hash.slice(1); // remove #
+    const storedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
+    
+    // Always keep allTasks updated with all tasks
+    setAllTasks(storedTasks);
+
+    if (hash === 'activity') {
+      setView('activity');
+      setTasks([]); // We'll show ActivityLog component instead of tasks
+    } else if (hash === 'team') {
+      setView('team');
+      // show tasks for the current user's team
+      const teamTasks = storedTasks.filter(t => t.teamId && currentUser?.teamId && t.teamId === currentUser.teamId);
+      setTasks(teamTasks);
+    } else if (hash === 'group') {
+      setView('group');
+      const groupTasks = storedTasks.filter(t => {
+        if (!t.assignedTo) return false;
+        if (Array.isArray(t.assignedTo)) return t.assignedTo.includes(currentUser.email) && t.assignedTo.length >= 2;
+        return false;
+      });
+      setTasks(groupTasks);
+    } else {
+      setView('my');
+      const myTasks = storedTasks.filter(t => {
+        if (!t.assignedTo) return false;
+        if (Array.isArray(t.assignedTo)) return t.assignedTo.includes(currentUser.email) && t.assignedTo.length <= 1;
+        return t.assignedTo === currentUser.email;
+      });
+      setTasks(myTasks);
+    }
+  }, [location.hash, currentUser?.email]);
+
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "user") {
+      navigate("/login", { replace: true });
+      return;
+    }
+  }, [navigate, currentUser]);
+
+  const updateTasks = (next) => {
+    try {
+      const currentAll = allTasks.slice();
+      const updatedAll = currentAll.map(t => {
+        const found = next.find(nt => nt.id === t.id);
+        return found ? found : t;
+      });
+      next.forEach(nt => {
+        if (!updatedAll.find(u => u.id === nt.id)) updatedAll.push(nt);
+      });
+      setAllTasks(updatedAll);
+      localStorage.setItem("tasks", JSON.stringify(updatedAll));
+      if (view === 'team') {
+        const teamTasks = updatedAll.filter(t => t.teamId && currentUser?.teamId && t.teamId === currentUser.teamId);
+        setTasks(teamTasks);
+      }
+      else if (view === 'my') {
+        const my = updatedAll.filter(t => {
+          if (!t.assignedTo) return false;
+          if (Array.isArray(t.assignedTo)) return t.assignedTo.includes(currentUser.email);
+          return t.assignedTo === currentUser.email;
+        });
+        setTasks(my);
+      } else {
+        setTasks([]);
+      }
+    } catch (e) {
+      console.warn('updateTasks failed', e);
+    }
+  };
+
+  const handleAddComment = (taskId, text) => {
+    if (!text.trim()) return;
+    const nextAll = allTasks.map(t =>
+      t.id === taskId
+        ? {
+            ...t,
+            comments: [
+              ...(t.comments || []),
+              {
+                text: text.trim(),
+                author: currentUser.name || currentUser.email,
+                time: new Date().toLocaleString(),
+              },
+            ],
+            history: [
+              ...(t.history || []),
+              `${currentUser.name || currentUser.email} commented at ${new Date().toLocaleString()}`,
+            ],
+          }
+        : t
+    );
+    updateTasks(nextAll);
+  };
+
+  const handleStatusChange = (taskId, newStatus) => {
+    const nextAll = allTasks.map(t =>
+      t.id === taskId
+        ? {
+            ...t,
+            status: newStatus,
+            history: [
+              ...(t.history || []),
+              `${currentUser.name || currentUser.email} marked "${newStatus}" at ${new Date().toLocaleString()}`,
+            ],
+          }
+        : t
+    );
+    updateTasks(nextAll);
+  };
+
+  // For team view, use allTasks. For my view, use filtered tasks
+  const displayed = view === 'team' ? allTasks : tasks;
+  const total = displayed.length;
+  const done = displayed.filter(t => t.status === "Done").length;
+  const inProgress = displayed.filter(t => t.status === "In Progress").length;
+  const todo = displayed.filter(t => t.status === "To Do").length;
+
+  // Drawer content
+  const drawer = (
+    <Box>
+      <Box sx={{ p: 2 }}>
+        <Typography variant="subtitle1" fontWeight="bold" color="primary">
+          Task Manager
+        </Typography>
+      </Box>
+      <Divider />
+      <List>
+        <ListItemButton 
+          selected={view === 'my'}
+          onClick={() => { window.location.hash = '#my'; setMobileOpen(false); }}
+        >
+          <ListItemIcon>
+            <Assignment />
+          </ListItemIcon>
+          <ListItemText primary="My Tasks" />
+        </ListItemButton>
+
+        <ListItemButton 
+          selected={view === 'group'}
+          onClick={() => { window.location.hash = '#group'; setMobileOpen(false); }}
+        >
+          <ListItemIcon>
+            <Group />
+          </ListItemIcon>
+          <ListItemText primary="Group Tasks" />
+        </ListItemButton>
+
+        <ListItemButton 
+          selected={view === 'team'}
+          onClick={() => { window.location.hash = '#team'; setMobileOpen(false); }}
+        >
+          <ListItemIcon>
+            <ViewList />
+          </ListItemIcon>
+          <ListItemText primary="All Tasks" />
+        </ListItemButton>
+
+        <ListItemButton 
+          selected={view === 'activity'}
+          onClick={() => { window.location.hash = '#activity'; setMobileOpen(false); }}
+        >
+          <ListItemIcon>
+            <Timeline />
+          </ListItemIcon>
+          <ListItemText primary="Activity" />
+        </ListItemButton>
+      </List>
+      <Divider />
+      <List>
+        <ListItemButton onClick={() => {
+          localStorage.removeItem("user");
+          navigate("/login");
+        }}>
+          <ListItemIcon>
+            <Logout />
+          </ListItemIcon>
+          <ListItemText primary="Logout" />
+        </ListItemButton>
+      </List>
+    </Box>
+  );
+
+  return (
+    <Box sx={{ display: 'flex' }}>
+      {/* Sidebar */}
+      <Box
+        component="nav"
+        sx={{ width: { sm: DRAWER_WIDTH }, flexShrink: { sm: 0 } }}
+      >
+        {/* Mobile drawer */}
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: 'block', sm: 'none' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH },
+          }}
+        >
+          {drawer}
+        </Drawer>
+        {/* Desktop drawer */}
+        <Drawer
+          variant="permanent"
+          sx={{
+            display: { xs: 'none', sm: 'block' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH },
+          }}
+          open
+        >
+          {drawer}
+        </Drawer>
+      </Box>
+
+      {/* Main content */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+          ml: { sm: `${DRAWER_WIDTH}px` }
+        }}
+      >
+        {/* Header */}
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+          <Box>
+            <Typography variant="h4" fontWeight={700}>My Dashboard</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Welcome, {currentUser?.name || currentUser?.email}
+            </Typography>
+          </Box>
+          {isMobile && (
+            <Button
+              onClick={handleDrawerToggle}
+              sx={{ mr: 2 }}
+            >
+              <MenuIcon />
+            </Button>
+          )}
+        </Box>
+
+        {/* Analytics */}
+        <Card sx={{ mb: 3, borderRadius: 2, boxShadow: 2 }}>
+          <CardContent>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Chip label={`Total: ${total}`} color="primary" sx={{ fontWeight: 700 }} />
+              <Chip label={`To Do: ${todo}`} color="warning" sx={{ fontWeight: 700 }} />
+              <Chip label={`In Progress: ${inProgress}`} color="info" sx={{ fontWeight: 700 }} />
+              <Chip label={`Done: ${done}`} color="success" sx={{ fontWeight: 700 }} />
+            </Stack>
+          </CardContent>
+        </Card>
+
+        {/* Content */}
+        <Box>
+          {view === 'activity' ? (
+            <ActivityLog />
+          ) : (
+            <Box id="tasks" sx={{ maxHeight: { xs: '65vh', md: '60vh' }, overflowY: 'auto', pr: 1 }}>
+              <Grid container spacing={2}>
+                {displayed.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 6, width: '100%' }}>
+                    <Typography color="text.secondary">No tasks found for this view.</Typography>
+                  </Box>
+                ) : (
+                  displayed.map(task => (
+                    <Grid item xs={12} md={6} lg={4} key={task.id}>
+                      <Card sx={{ 
+                        boxShadow: 3, 
+                        height: '100%', 
+                        borderRadius: 3,
+                        transition: 'transform .15s',
+                        '&:hover': { transform: 'translateY(-6px)' }
+                      }}>
+                        <CardContent sx={{ p: 2.5 }}>
+                          <Box display="flex" justifyContent="space-between" alignItems="center">
+                            <Typography variant="h6" sx={{ 
+                              textTransform: 'capitalize',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {task.title}
+                            </Typography>
+                            <Chip
+                              label={task.priority}
+                              sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 1.4, fontWeight: 700 }}
+                              color={
+                                task.priority === "High"
+                                  ? "error"
+                                  : task.priority === "Medium"
+                                    ? "warning"
+                                    : "success"
+                              }
+                              size="small"
+                            />
+                          </Box>
+                          <Typography 
+                            color="text.secondary" 
+                            gutterBottom
+                            sx={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical'
+                            }}
+                          >
+                            {task.description || "No description available"}
+                          </Typography>
+
+                          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 1 }}>
+                            <Typography variant="body2">
+                              <strong>Due:</strong> {task.dueDate || "No due date"}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Status:</strong> {task.status}
+                            </Typography>
+                          </Box>
+
+                          {/* Status Change Buttons */}
+                          <Stack direction="row" spacing={1} mb={2}>
+                            <Button
+                              size="small"
+                              variant={task.status === "To Do" ? "contained" : "outlined"}
+                              onClick={() => handleStatusChange(task.id, "To Do")}
+                            >
+                              To Do
+                            </Button>
+                            <Button
+                              size="small"
+                              variant={task.status === "In Progress" ? "contained" : "outlined"}
+                              color="info"
+                              onClick={() => handleStatusChange(task.id, "In Progress")}
+                            >
+                              In Progress
+                            </Button>
+                            <Button
+                              size="small"
+                              variant={task.status === "Done" ? "contained" : "outlined"}
+                              color="success"
+                              onClick={() => handleStatusChange(task.id, "Done")}
+                              startIcon={<AssignmentTurnedIn />}
+                            >
+                              Done
+                            </Button>
+                          </Stack>
+
+                          {/* Task Members */}
+                          <TaskMembers task={task} />
+
+                          <Divider sx={{ my: 1 }} />
+
+                          {/* Comments Section */}
+                          <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                            <Comment sx={{ mr: 0.5, verticalAlign: "middle" }} /> Comments
+                          </Typography>
+                          <Box sx={{ maxHeight: 120, overflowY: 'auto' }}>
+                            {(task.comments || []).map((c, i) => (
+                              <Paper key={i} sx={{ p: 1, my: 0.5, bgcolor: "#f9f9f9" }}>
+                                <Typography variant="body2">
+                                  <strong>{c.author}</strong>: {c.text}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">{c.time}</Typography>
+                              </Paper>
+                            ))}
+                          </Box>
+                          <TextField
+                            size="small"
+                            fullWidth
+                            placeholder="Add a comment and press Enter"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && e.target.value.trim()) {
+                                handleAddComment(task.id, e.target.value);
+                                e.target.value = "";
+                              }
+                            }}
+                            sx={{ mt: 1 }}
+                          />
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))
+                )}
+              </Grid>
+            </Box>
+          )}
+        </Box>
+      </Box>
+    </Box>
+  );
+}

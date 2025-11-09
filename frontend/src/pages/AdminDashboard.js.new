@@ -1,0 +1,405 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Divider,
+  Grid,
+  IconButton,
+  Menu,
+  MenuItem,
+  TextField,
+  Typography,
+  useMediaQuery
+} from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import LogoutIcon from '@mui/icons-material/Logout';
+import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
+import {
+  blue,
+  green,
+  orange,
+  deepPurple
+} from "@mui/material/colors";
+
+const COLORS = [blue[400], green[400], orange[400], deepPurple[400]];
+
+export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const isSmall = useMediaQuery(theme.breakpoints.down("sm"));
+  const location = useLocation();
+  const currentUser = JSON.parse(localStorage.getItem("user"));
+  
+  // State
+  const [tasks, setTasks] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
+  const [tab, setTab] = useState("tasks");
+  const [assigneeMenuAnchor, setAssigneeMenuAnchor] = useState(null);
+  const [assigneeMenuTaskId, setAssigneeMenuTaskId] = useState(null);
+  const [newTask, setNewTask] = useState({
+    title: "",
+    description: "",
+    assignedTo: [],
+    dueDate: "",
+    priority: "Medium",
+    teamId: null,
+    status: "To Do",
+  });
+  const [addMode, setAddMode] = useState(null); // null for individual | 'group' for team assignment
+  const [newComment, setNewComment] = useState({});
+
+  // Effects
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "admin") {
+      navigate("/login", { replace: true });
+      return;
+    }
+  }, [navigate, currentUser]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const t = params.get("tab");
+    if (t) setTab(t);
+  }, [location.search]);
+
+  useEffect(() => {
+    loadData();
+    const handleUpdate = () => loadData();
+    window.addEventListener("storage", handleUpdate);
+    window.addEventListener("custom_local_update", handleUpdate);
+    return () => {
+      window.removeEventListener("storage", handleUpdate);
+      window.removeEventListener("custom_local_update", handleUpdate);
+    };
+  }, []);
+
+  // Helpers
+  const loadData = () => {
+    const storedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
+    const storedUsers = JSON.parse(localStorage.getItem("users")) || [];
+    const storedActivity = JSON.parse(localStorage.getItem("activity")) || [];
+    const storedTeams = JSON.parse(localStorage.getItem("teams")) || [];
+    setTasks(storedTasks);
+    setUsers(storedUsers);
+    setActivityLog(storedActivity);
+    setTeams(storedTeams);
+  };
+
+  // Event Handlers
+  const handleOpenAssigneeMenu = (event, taskId) => {
+    setAssigneeMenuAnchor(event.currentTarget);
+    setAssigneeMenuTaskId(taskId);
+  };
+
+  const handleCloseAssigneeMenu = () => {
+    setAssigneeMenuAnchor(null);
+    setAssigneeMenuTaskId(null);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("isAdmin");
+    setNewTask({ 
+      title: "", 
+      description: "",
+      assignedTo: [], 
+      dueDate: "", 
+      priority: "Medium", 
+      status: "To Do",
+      teamId: null 
+    });
+    setNewComment({});
+    setAssigneeMenuAnchor(null);
+    setAssigneeMenuTaskId(null);
+    navigate("/login", { replace: true });
+    window.dispatchEvent(new Event('custom_local_update'));
+  };
+
+  const handleAddTask = () => {
+    if (!newTask.title || !newTask.dueDate) return;
+    if (addMode === 'group' && !newTask.teamId) return;
+
+    let assignees = [];
+    if (addMode === 'group') {
+      const team = teams.find(t => t.id === newTask.teamId);
+      if (team) {
+        assignees = users
+          .filter(u => team.members?.includes(u.id))
+          .map(u => u.email);
+      }
+      if (assignees.length === 0) return;
+    } else {
+      assignees = Array.isArray(newTask.assignedTo) ? newTask.assignedTo : (newTask.assignedTo ? [newTask.assignedTo] : []);
+      if (assignees.length === 0) return;
+    }
+
+    const newTaskObj = {
+      ...newTask,
+      id: Date.now(),
+      assignedTo: assignees,
+      description: newTask.description || "",
+      status: newTask.status || "To Do",
+      comments: [],
+      teamId: addMode === 'group' ? newTask.teamId : null,
+    };
+
+    const updated = [...tasks, newTaskObj];
+    const logEntry = {
+      id: Date.now(),
+      message: addMode === 'group'
+        ? `Task "${newTask.title}" assigned to group (${assignees.join(', ')})`
+        : `Task "${newTask.title}" assigned to ${assignees.join(', ')}`,
+      date: new Date().toLocaleString(),
+    };
+
+    localStorage.setItem("tasks", JSON.stringify(updated));
+    localStorage.setItem("activity", JSON.stringify([...activityLog, logEntry]));
+    setTasks(updated);
+    setActivityLog(prev => [...prev, logEntry]);
+    setNewTask({
+      title: "",
+      description: "",
+      assignedTo: [],
+      dueDate: "",
+      priority: "Medium",
+      status: "To Do",
+      teamId: null
+    });
+    window.dispatchEvent(new Event("custom_local_update"));
+  };
+
+  const handleRemoveAssignee = (taskId, email) => {
+    const updated = tasks.map(t => 
+      t.id === taskId 
+        ? { 
+            ...t, 
+            assignedTo: Array.isArray(t.assignedTo) 
+              ? t.assignedTo.filter(a => a !== email) 
+              : (t.assignedTo === email ? [] : t.assignedTo) 
+          } 
+        : t
+    );
+    localStorage.setItem("tasks", JSON.stringify(updated));
+    setTasks(updated);
+    window.dispatchEvent(new Event('custom_local_update'));
+  };
+
+  // Today's date for date picker min
+  const today = new Date().toISOString().split("T")[0];
+
+  return (
+    <Box sx={{ pt: 4, pr: 4, pb: 4, pl: { md: 0, xs: 2 }, bgcolor: "#f4f6f8", minHeight: "100vh" }}>
+      {/* Header */}
+      <Grid container alignItems="center" spacing={3}>
+        <Grid item xs={12}>
+          <Grid container justifyContent="space-between" alignItems="center" mb={3}>
+            <Grid item>
+              <Typography variant="h4" fontWeight={700} color="primary" sx={{ letterSpacing: 0.5 }}>
+                Admin Dashboard
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                Manage tasks and team members
+              </Typography>
+            </Grid>
+            <Grid item>
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<LogoutIcon />}
+                onClick={handleLogout}
+              >
+                Logout
+              </Button>
+            </Grid>
+          </Grid>
+        </Grid>
+
+        {/* Main content */}
+        <Grid item xs={12}>
+          {/* Tasks Panel */}
+          {tab === 'tasks' && (
+            <Box id="tasks" sx={{ maxWidth: '1200px', mx: 'auto', width: '100%' }}>
+              <Grid container spacing={2} alignItems="stretch">
+                {tasks.length === 0 ? (
+                  <Grid item xs={12}>
+                    <Typography color="text.secondary" sx={{ ml: 2 }}>
+                      No tasks available.
+                    </Typography>
+                  </Grid>
+                ) : (
+                  tasks.map((t) => (
+                    <Grid item xs={12} sm={6} md={3} key={t.id}>
+                      <Card sx={{ 
+                        p: 2, 
+                        display: "flex", 
+                        flexDirection: "column", 
+                        width: '100%',
+                        height: 280, 
+                        borderRadius: 2, 
+                        boxShadow: 2, 
+                        transition: 'transform .15s', 
+                        '&:hover': { transform: 'translateY(-4px)' } 
+                      }}>
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="h6" sx={{ 
+                            textTransform: 'capitalize',
+                            mb: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 1,
+                            WebkitBoxOrient: 'vertical'
+                          }}>
+                            {t.title}
+                          </Typography>
+                          <Chip
+                            label={t.priority}
+                            sx={{ borderRadius: 2, px: 1.2, fontWeight: 600 }}
+                            color={
+                              t.priority === "High"
+                                ? "error"
+                                : t.priority === "Medium"
+                                ? "warning"
+                                : "success"
+                            }
+                            size="small"
+                          />
+                        </Box>
+
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Description:
+                          </Typography>
+                          <Typography variant="body2" sx={{ 
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            mb: 1
+                          }}>
+                            {t.description || 'No description provided'}
+                          </Typography>
+                        </Box>
+
+                        <Box sx={{ mt: 'auto' }}>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Assigned to:
+                          </Typography>
+                          <Box sx={{ 
+                            display: 'flex', 
+                            flexWrap: 'wrap', 
+                            gap: 0.5,
+                            maxHeight: 80,
+                            overflowY: 'auto'
+                          }}>
+                            {(() => {
+                              const arr = Array.isArray(t.assignedTo) ? t.assignedTo : (t.assignedTo ? [t.assignedTo] : []);
+                              if (arr.length === 0) return (<Typography variant="body2" color="text.secondary">Unassigned</Typography>);
+                              const visible = arr.slice(0, 2);
+                              const extra = arr.length - visible.length;
+                              return (
+                                <>
+                                  {visible.map(email => (
+                                    <Box 
+                                      key={email} 
+                                      sx={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        bgcolor: '#f1f3f4', 
+                                        px: 1, 
+                                        py: 0.5,
+                                        borderRadius: 1,
+                                        maxWidth: '100%'
+                                      }}
+                                    >
+                                      <Typography variant="body2" noWrap sx={{ fontSize: '0.85rem' }}>
+                                        {email}
+                                      </Typography>
+                                      <IconButton 
+                                        size="small" 
+                                        sx={{ ml: 0.5 }}
+                                        onClick={() => handleRemoveAssignee(t.id, email)}
+                                      >
+                                        <CloseIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
+                                  ))}
+                                  {extra > 0 && (
+                                    <Button 
+                                      size="small" 
+                                      sx={{ minWidth: 'auto', px: 1 }} 
+                                      onClick={(e) => handleOpenAssigneeMenu(e, t.id)}
+                                    >
+                                      +{extra} more
+                                    </Button>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </Box>
+                        </Box>
+                        
+                        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Due: {t.dueDate}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: t.status === "Completed" || t.status === "Done" ? "green" : "orange",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Status: {t.status}
+                          </Typography>
+                        </Box>
+                      </Card>
+                    </Grid>
+                  ))
+                )}
+              </Grid>
+
+              {/* Assignee Menu */}
+              <Menu
+                anchorEl={assigneeMenuAnchor}
+                open={Boolean(assigneeMenuAnchor)}
+                onClose={handleCloseAssigneeMenu}
+              >
+                {(() => {
+                  const task = tasks.find(t => t.id === assigneeMenuTaskId);
+                  const arr = task ? (Array.isArray(task.assignedTo) ? task.assignedTo : (task.assignedTo ? [task.assignedTo] : [])) : [];
+                  return arr.slice(2).map(email => (
+                    <MenuItem 
+                      key={email} 
+                      sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    >
+                      <Typography>{email}</Typography>
+                      <Button 
+                        size="small" 
+                        color="error" 
+                        onClick={() => {
+                          handleRemoveAssignee(assigneeMenuTaskId, email);
+                          handleCloseAssigneeMenu();
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </MenuItem>
+                  ));
+                })()}
+              </Menu>
+            </Box>
+          )}
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}

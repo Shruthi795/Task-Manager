@@ -1,39 +1,49 @@
 import React from "react";
 import { Card, CardContent, Typography, Box } from "@mui/material";
-import { useTaskContext } from "../context/TaskContext";
 
 export default function ActivityLog() {
-  const { tasks } = useTaskContext();
-
-  // Gather all actions: task created, assigned, commented
+  const allTasks = JSON.parse(localStorage.getItem("tasks")) || [];
+  
+  // Gather all actions from task history
   const activities = [];
 
-  tasks.forEach((t) => {
+  allTasks.forEach((task) => {
+    // Add task creation
     activities.push({
       type: "Task Created",
-      title: t.title,
-      user: t.createdBy || "Admin",
-      time: new Date(t.id).toLocaleString(),
+      title: task.title,
+      user: task.createdBy || "Admin",
+      time: new Date(task.id).toLocaleString(),
     });
 
-    if (t.assignedTo)
-      activities.push({
-        type: "Assigned",
-        title: t.title,
-        user: t.assignedTo,
-        time: new Date(t.id).toLocaleString(),
+    // Add all history items
+    if (task.history && task.history.length > 0) {
+      task.history.forEach((historyItem) => {
+        activities.push({
+          type: "Update",
+          title: task.title,
+          description: historyItem,
+          time: new Date().toLocaleString(),
+        });
       });
+    }
 
-    if (t.comments?.length)
-      t.comments.forEach((c) =>
+    // Add comments as activities
+    if (task.comments && task.comments.length > 0) {
+      task.comments.forEach((comment) => {
         activities.push({
           type: "Comment",
-          title: t.title,
-          user: c.author,
-          time: c.time,
-        })
-      );
+          title: task.title,
+          user: comment.author,
+          description: comment.text,
+          time: comment.time,
+        });
+      });
+    }
   });
+
+  // Sort activities by time, most recent first
+  const sortedActivities = activities.sort((a, b) => new Date(b.time) - new Date(a.time));
 
   return (
     <Card sx={{ mt: 4, boxShadow: 3 }}>
@@ -44,21 +54,28 @@ export default function ActivityLog() {
         {activities.length === 0 ? (
           <Typography color="text.secondary">No activity yet.</Typography>
         ) : (
-          activities
-            .sort((a, b) => new Date(b.time) - new Date(a.time))
-            .map((a, i) => (
-              <Box key={i} sx={{ mb: 1.5, borderBottom: "1px solid #eee", pb: 1 }}>
+          <Box sx={{ mt: 2 }}>
+            {sortedActivities.map((activity, index) => (
+              <Box key={index} sx={{ mb: 1.5, borderBottom: "1px solid #eee", pb: 1, "&:last-child": { borderBottom: 0 } }}>
                 <Typography variant="subtitle2" color="primary">
-                  {a.type}
+                  {activity.type}: <strong>{activity.title}</strong>
                 </Typography>
-                <Typography variant="body2">
-                  {a.title} – <strong>{a.user}</strong>
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {a.time}
+                {activity.description && (
+                  <Typography variant="body2" color="text.secondary">
+                    {activity.description}
+                  </Typography>
+                )}
+                {activity.user && activity.type !== "Update" && (
+                  <Typography variant="body2" color="text.secondary">
+                    By: {activity.user}
+                  </Typography>
+                )}
+                <Typography variant="caption" display="block" color="text.secondary">
+                  {activity.time}
                 </Typography>
               </Box>
-            ))
+            ))}
+          </Box>
         )}
       </CardContent>
     </Card>

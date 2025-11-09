@@ -1,36 +1,133 @@
 import React, { useEffect, useState } from "react";
 import {
-  Container, Typography, Box, Card, CardContent, Grid, Divider,
-  Chip, Button, TextField, Paper, Stack
+  Container,
+  Typography,
+  Box,
+  Card,
+  CardContent,
+  Divider,
+  Chip,
+  Button,
+  TextField,
+  Paper,
+  Stack,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  IconButton,
+  useTheme,
+  useMediaQuery,
 } from "@mui/material";
-import { Logout, Comment, AssignmentTurnedIn } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
+import {
+  Comment,
+  AssignmentTurnedIn,
+  Logout,
+  Assignment,
+  Group,
+  ViewList,
+  Menu as MenuIcon,
+} from "@mui/icons-material";
+import TaskMembers from "../components/TaskMembers";
+import { useNavigate, useLocation } from "react-router-dom";
+
+const DRAWER_WIDTH = 240;
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const [mobileOpen, setMobileOpen] = useState(false);
   const currentUser = JSON.parse(localStorage.getItem("user"));
   const [tasks, setTasks] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);
+  const [view, setView] = useState("my");
+
+  const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
+
+  useEffect(() => {
+    const hash = location.hash.slice(1);
+    const storedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
+    setAllTasks(storedTasks);
+
+    switch (hash) {
+      case "group":
+        setView("group");
+        setTasks(
+          storedTasks.filter(
+            (t) =>
+              Array.isArray(t.assignedTo) &&
+              t.assignedTo.includes(currentUser.email) &&
+              t.assignedTo.length >= 2
+          )
+        );
+        break;
+      case "all":
+        setView("all");
+        setTasks(storedTasks);
+        break;
+      default:
+        setView("my");
+        setTasks(
+          storedTasks.filter((t) => {
+            if (!t.assignedTo) return false;
+            if (Array.isArray(t.assignedTo))
+              return t.assignedTo.includes(currentUser.email);
+            return t.assignedTo === currentUser.email;
+          })
+        );
+        break;
+    }
+  }, [location.hash, currentUser?.email]);
 
   useEffect(() => {
     if (!currentUser || currentUser.role !== "user") {
       navigate("/login", { replace: true });
-      return;
     }
-    const storedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
-    const myTasks = storedTasks.filter(t => t.assignedTo === currentUser.email);
-    setTasks(myTasks);
   }, [navigate, currentUser]);
 
   const updateTasks = (next) => {
-    setTasks(next);
-    const all = JSON.parse(localStorage.getItem("tasks")) || [];
-    const updatedAll = all.map(t => next.find(nt => nt.id === t.id) || t);
-    localStorage.setItem("tasks", JSON.stringify(updatedAll));
+    try {
+      const updatedAll = allTasks.map((t) => next.find((nt) => nt.id === t.id) || t);
+      next.forEach((nt) => {
+        if (!updatedAll.find((u) => u.id === nt.id)) updatedAll.push(nt);
+      });
+
+      setAllTasks(updatedAll);
+      localStorage.setItem("tasks", JSON.stringify(updatedAll));
+
+      if (view === "my") {
+        setTasks(
+          updatedAll.filter((t) => {
+            if (!t.assignedTo) return false;
+            if (Array.isArray(t.assignedTo))
+              return t.assignedTo.includes(currentUser.email);
+            return t.assignedTo === currentUser.email;
+          })
+        );
+      } else if (view === "group") {
+        setTasks(
+          updatedAll.filter(
+            (t) =>
+              Array.isArray(t.assignedTo) &&
+              t.assignedTo.includes(currentUser.email) &&
+              t.assignedTo.length >= 2
+          )
+        );
+      } else {
+        setTasks(updatedAll);
+      }
+    } catch (e) {
+      console.warn("updateTasks failed", e);
+    }
   };
 
   const handleAddComment = (taskId, text) => {
     if (!text.trim()) return;
-    const next = tasks.map(t =>
+    const nextAll = allTasks.map((t) =>
       t.id === taskId
         ? {
             ...t,
@@ -42,47 +139,101 @@ export default function Dashboard() {
                 time: new Date().toLocaleString(),
               },
             ],
-            history: [
-              ...(t.history || []),
-              `${currentUser.name || currentUser.email} commented at ${new Date().toLocaleString()}`,
-            ],
           }
         : t
     );
-    updateTasks(next);
+    updateTasks(nextAll);
   };
 
   const handleStatusChange = (taskId, newStatus) => {
-    const next = tasks.map(t =>
-      t.id === taskId
-        ? {
-            ...t,
-            status: newStatus,
-            history: [
-              ...(t.history || []),
-              `${currentUser.name || currentUser.email} marked "${newStatus}" at ${new Date().toLocaleString()}`,
-            ],
-          }
-        : t
+    const nextAll = allTasks.map((t) =>
+      t.id === taskId ? { ...t, status: newStatus } : t
     );
-    updateTasks(next);
+    updateTasks(nextAll);
   };
 
   const total = tasks.length;
-  const done = tasks.filter(t => t.status === "Done").length;
-  const inProgress = tasks.filter(t => t.status === "In Progress").length;
-  const todo = tasks.filter(t => t.status === "To Do").length;
+  const done = tasks.filter((t) => t.status === "Done").length;
+  const inProgress = tasks.filter((t) => t.status === "In Progress").length;
+  const todo = tasks.filter((t) => t.status === "To Do").length;
+
+  const drawer = (
+    <Box sx={{ textAlign: "center" }}>
+      <Typography variant="h6" sx={{ my: 2 }}>
+        Dashboard Menu
+      </Typography>
+      <Divider />
+      <List>
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={() => (window.location.hash = "#my")}
+            selected={view === "my"}
+          >
+            <ListItemIcon>
+              <Assignment />
+            </ListItemIcon>
+            <ListItemText primary="My Tasks" />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={() => (window.location.hash = "#group")}
+            selected={view === "group"}
+          >
+            <ListItemIcon>
+              <Group />
+            </ListItemIcon>
+            <ListItemText primary="Group Tasks" />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={() => (window.location.hash = "#all")}
+            selected={view === "all"}
+          >
+            <ListItemIcon>
+              <ViewList />
+            </ListItemIcon>
+            <ListItemText primary="All Tasks" />
+          </ListItemButton>
+        </ListItem>
+      </List>
+    </Box>
+  );
 
   return (
-  // disable container gutters on desktop so content is flush with the sidebar
-  <Container maxWidth="lg" disableGutters sx={{ mt: 4, mb: 5, pt: 4, pr: 2, pb: 4, pl: { md: 0, xs: 2 } }}>
+    <Container
+      maxWidth="xl"
+      disableGutters
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        overflow: "hidden",
+      }}
+    >
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-        <Box>
-          <Typography variant="h4" fontWeight={700}>My Dashboard</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Welcome, {currentUser?.name || currentUser?.email}
-          </Typography>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        px={2}
+        py={2}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {isMobile && (
+            <IconButton color="primary" onClick={handleDrawerToggle}>
+              <MenuIcon />
+            </IconButton>
+          )}
+          <Box>
+            <Typography variant="h4" fontWeight={700}>
+              My Dashboard
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Welcome, {currentUser?.name || currentUser?.email}
+            </Typography>
+          </Box>
         </Box>
         <Button
           variant="outlined"
@@ -98,28 +249,106 @@ export default function Dashboard() {
       </Box>
 
       {/* Analytics */}
-      <Stack direction="row" spacing={2} mb={3}>
-        <Chip label={`Total: ${total}`} color="primary" sx={{ fontWeight: 700 }} />
-        <Chip label={`To Do: ${todo}`} color="warning" sx={{ fontWeight: 700 }} />
-        <Chip label={`In Progress: ${inProgress}`} color="info" sx={{ fontWeight: 700 }} />
-        <Chip label={`Done: ${done}`} color="success" sx={{ fontWeight: 700 }} />
-      </Stack>
+      <Card sx={{ mb: 2, mx: 2, borderRadius: 2, boxShadow: 2 }}>
+        <CardContent>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Chip label={`Total: ${total}`} color="primary" />
+            <Chip label={`To Do: ${todo}`} color="warning" />
+            <Chip label={`In Progress: ${inProgress}`} color="info" />
+            <Chip label={`Done: ${done}`} color="success" />
+          </Stack>
+        </CardContent>
+      </Card>
 
-  {/* Task List wrapped in scrollable container so page doesn't require long scroll */}
-  <Box id="tasks" sx={{ maxHeight: { xs: '65vh', md: '60vh' }, overflowY: 'auto', pr: 1 }}>
-        <Grid container spacing={3}>
-          {tasks.length === 0 ? (
-            <Typography color="text.secondary" sx={{ ml: 1 }}>No tasks assigned yet.</Typography>
-          ) : (
-            tasks.map(task => (
-              <Grid item xs={12} md={6} key={task.id}>
-                <Card sx={{ boxShadow: 3, height: '100%', borderRadius: 2, transition: 'transform .15s', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                      <Typography variant="h6" sx={{ textTransform: 'capitalize' }}>{task.title}</Typography>
+      {/* Layout */}
+      <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+        {/* Sidebar */}
+        <Box component="nav" sx={{ width: { sm: DRAWER_WIDTH }, flexShrink: 0 }}>
+          <Drawer
+            variant="temporary"
+            open={mobileOpen}
+            onClose={handleDrawerToggle}
+            ModalProps={{ keepMounted: true }}
+            sx={{
+              display: { xs: "block", sm: "none" },
+              "& .MuiDrawer-paper": { boxSizing: "border-box", width: DRAWER_WIDTH },
+            }}
+          >
+            {drawer}
+          </Drawer>
+
+          <Drawer
+            variant="permanent"
+            sx={{
+              display: { xs: "none", sm: "block" },
+              "& .MuiDrawer-paper": { boxSizing: "border-box", width: DRAWER_WIDTH },
+            }}
+            open
+          >
+            {drawer}
+          </Drawer>
+        </Box>
+
+        {/* Main Content */}
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+            overflowY: "auto",
+            p: 0
+          }}
+        >
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(auto-fill, 280px)"
+              },
+              gap: 2,
+              alignItems: "start",
+              justifyContent: "start",
+              p: 2,
+              pt: 0
+            }}
+          >
+            {tasks.length === 0 ? (
+              <Typography
+                color="text.secondary"
+                textAlign="center"
+                sx={{ gridColumn: "1/-1", py: 6 }}
+              >
+                No tasks found for this view.
+              </Typography>
+            ) : (
+              tasks.map((task) => (
+                <Card
+                  key={task.id}
+                  sx={{
+                    boxShadow: 2,
+                    borderRadius: 2,
+                    display: "flex",
+                    flexDirection: "column",
+                    transition: "transform .15s",
+                    "&:hover": { transform: "translateY(-4px)", boxShadow: 3 },
+                  }}
+                >
+                  <CardContent sx={{ p: 2 }}>
+                    <Box
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems="flex-start"
+                      mb={1}
+                    >
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ fontWeight: 600, fontSize: "1rem" }}
+                      >
+                        {task.title}
+                      </Typography>
                       <Chip
                         label={task.priority}
-                        sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 1.2, fontWeight: 600 }}
                         color={
                           task.priority === "High"
                             ? "error"
@@ -128,8 +357,10 @@ export default function Dashboard() {
                             : "success"
                         }
                         size="small"
+                        sx={{ fontWeight: 700 }}
                       />
                     </Box>
+
                     <Typography color="text.secondary" gutterBottom>
                       {task.description || "No description available"}
                     </Typography>
@@ -138,11 +369,6 @@ export default function Dashboard() {
                       <strong>Due:</strong> {task.dueDate || "No due date"}
                     </Typography>
 
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      <strong>Status:</strong> {task.status}
-                    </Typography>
-
-                    {/* Status Change Buttons */}
                     <Stack direction="row" spacing={1} mb={2}>
                       <Button
                         size="small"
@@ -153,7 +379,9 @@ export default function Dashboard() {
                       </Button>
                       <Button
                         size="small"
-                        variant={task.status === "In Progress" ? "contained" : "outlined"}
+                        variant={
+                          task.status === "In Progress" ? "contained" : "outlined"
+                        }
                         color="info"
                         onClick={() => handleStatusChange(task.id, "In Progress")}
                       >
@@ -170,20 +398,24 @@ export default function Dashboard() {
                       </Button>
                     </Stack>
 
+                    <TaskMembers task={task} />
                     <Divider sx={{ my: 1 }} />
 
-                    {/* Comments Section */}
-                    <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }}>
                       <Comment sx={{ mr: 0.5, verticalAlign: "middle" }} /> Comments
                     </Typography>
+
                     {(task.comments || []).map((c, i) => (
                       <Paper key={i} sx={{ p: 1, my: 0.5, bgcolor: "#f9f9f9" }}>
                         <Typography variant="body2">
                           <strong>{c.author}</strong>: {c.text}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">{c.time}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {c.time}
+                        </Typography>
                       </Paper>
                     ))}
+
                     <TextField
                       size="small"
                       fullWidth
@@ -198,24 +430,10 @@ export default function Dashboard() {
                     />
                   </CardContent>
                 </Card>
-              </Grid>
-            ))
-          )}
-        </Grid>
-      </Box>
-
-  {/* Activity Log */}
-  <Box id="activity" mt={5}>
-        <Typography variant="h6" gutterBottom>Activity Log</Typography>
-        {tasks.every(t => !(t.history && t.history.length)) ? (
-          <Typography color="text.secondary">No activity yet.</Typography>
-        ) : (
-          tasks.flatMap(t => (t.history || []).map((h, i) => (
-            <Typography key={`${t.id}-${i}`} variant="body2" sx={{ mb: 0.5 }}>
-              <strong>{t.title}</strong> — {h}
-            </Typography>
-          )))
-        )}
+              ))
+            )}
+          </Box>
+        </Box>
       </Box>
     </Container>
   );

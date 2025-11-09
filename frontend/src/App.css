@@ -36,3 +36,13 @@
     transform: rotate(360deg);
   }
 }
+
+/* Make the header less forcing on small screens so pages don't appear vertically centered */
+@media (max-width: 600px) {
+  .App-header {
+    min-height: auto;
+    justify-content: flex-start;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+}
